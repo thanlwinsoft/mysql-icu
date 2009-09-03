@@ -1,0 +1,22 @@
+syntax: glob
+*.la
+*.lai
+*.lo
+*.Plo
+*.o
+*.so*
+*~
+*.deps
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache
+config.h
+config.h.in
+config.log
+config.status
+configure
+libtool
+*.pcs
+stamp-h1
+

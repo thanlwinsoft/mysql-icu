@@ -12,10 +12,29 @@
     </keywords>
     <ignoreparts/>
     <projectname>mysql-icu</projectname>
+    <projectdirectory>.</projectdirectory>
+    <absoluteprojectpath>false</absoluteprojectpath>
+    <description/>
+    <defaultencoding/>
   </general>
   <kdevautoproject>
-    <general/>
-    <run/>
+    <general>
+      <useconfiguration>default</useconfiguration>
+    </general>
+    <run>
+      <mainprogram>/usr/local/mysql/libexec/mysqld</mainprogram>
+      <programargs>--defaults-file=/usr/local/mysql/etc/my.cnf
+</programargs>
+      <globaldebugarguments>--defaults-file=/usr/local/mysql/etc/my.cnf
+</globaldebugarguments>
+      <globalcwd>/home/keith/projects/mysql-icu/mysql-icu</globalcwd>
+      <useglobalprogram>true</useglobalprogram>
+      <terminal>false</terminal>
+      <autocompile>false</autocompile>
+      <autoinstall>false</autoinstall>
+      <autokdesu>false</autokdesu>
+      <envvars/>
+    </run>
     <configurations>
       <optimized>
         <builddir>optimized</builddir>
@@ -32,6 +51,11 @@
         <f77compiler>kdevg77options</f77compiler>
         <cxxflags>-O0 -g3</cxxflags>
       </debug>
+      <default>
+        <envvars>
+          <envvar value="/usr/local/mysql/bin:${PATH}" name="PATH" />
+        </envvars>
+      </default>
     </configurations>
     <make>
       <envvars>
@@ -158,5 +182,42 @@
       <alwaysIncludeNamespaces>false</alwaysIncludeNamespaces>
       <includePaths>.;</includePaths>
     </codecompletion>
+    <creategettersetter>
+      <prefixGet/>
+      <prefixSet>set</prefixSet>
+      <prefixVariable>m_,_</prefixVariable>
+      <parameterName>theValue</parameterName>
+      <inlineGet>true</inlineGet>
+      <inlineSet>true</inlineSet>
+    </creategettersetter>
+    <splitheadersource>
+      <enabled>false</enabled>
+      <synchronize>true</synchronize>
+      <orientation>Vertical</orientation>
+    </splitheadersource>
   </kdevcppsupport>
+  <cppsupportpart>
+    <filetemplates>
+      <interfacesuffix>.h</interfacesuffix>
+      <implementationsuffix>.cpp</implementationsuffix>
+    </filetemplates>
+  </cppsupportpart>
+  <kdevdebugger>
+    <general>
+      <gdbpath/>
+      <dbgshell>libtool</dbgshell>
+      <configGdbScript/>
+      <runShellScript/>
+      <runGdbScript/>
+      <breakonloadinglibs>true</breakonloadinglibs>
+      <separatetty>false</separatetty>
+      <floatingtoolbar>false</floatingtoolbar>
+      <raiseGDBOnStart>false</raiseGDBOnStart>
+    </general>
+    <display>
+      <staticmembers>false</staticmembers>
+      <demanglenames>true</demanglenames>
+      <outputradix>10</outputradix>
+    </display>
+  </kdevdebugger>
 </kdevelop>

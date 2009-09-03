@@ -3,8 +3,33 @@ AC_INIT(configure.in)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE(mysql-icu, 0.1)
 
+AC_DISABLE_STATIC
 AC_LANG_CPLUSPLUS
 AC_PROG_CXX
 AM_PROG_LIBTOOL
 
-AC_OUTPUT(Makefile)
+AC_CHECK_HEADERS([unicode/utf.h unicode/ucol.h unicode/uiter.h],[HAVE_ICU=yes;LIBS="`icu-config --ldflags` $LIBS";],[HAVE_ICU=;])
+
+AC_PATH_PROG(ICU_CONFIG, icu-config, no)
+AC_PATH_PROG(MYSQL_CONFIG, mysql_config, no)
+
+ICU_CFLAGS=`$ICU_CONFIG --cflags`
+ICU_LDFLAGS=`$ICU_CONFIG --ldflags`
+AC_SUBST(ICU_CFLAGS)
+AC_SUBST(ICU_LDFLAGS)
+
+AC_MSG_CHECKING([Checking for plugin support])
+if $MYSQL_CONFIG --plugindir;
+then
+    AC_MSG_RESULT([yes])
+else
+    AC_MSG_ERROR([Plugin directory not available for this version of MySQL])
+fi
+MYSQL_CFLAGS=`$MYSQL_CONFIG --cflags`
+MYSQL_LDFLAGS=`$MYSQL_CONFIG --libs`
+MYSQL_PLUGIN_DIR=`$MYSQL_CONFIG --plugindir`
+AC_SUBST(MYSQL_CFLAGS)
+AC_SUBST(MYSQL_LDFLAGS)
+AC_SUBST(MYSQL_PLUGIN_DIR)
+
+AC_OUTPUT(Makefile src/Makefile)
