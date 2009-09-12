@@ -85,6 +85,14 @@ static my_bool my_coll_init_icu(CHARSET_INFO *cs, void *(*alloc)(size_t))
         }
         /* TODO tailored collation */
         cs->sort_order = (uchar*)ucol_openRules(rules, rulesLength, UCOL_DEFAULT, UCOL_DEFAULT_STRENGTH, &rulesError, &status);
+        if (!U_SUCCESS(status))
+        {
+            fprintf(stderr, "ICU collation rules parse error at line %d, col %d\n",
+                rulesError.line, rulesError.offset);
+            my_free(rules, MYF(MY_WME));
+            return 1;
+        }
+        fprintf(stderr, "Custom ICU collation rules loaded\n");
         if (strcmp(cs->csname, "utf8") == 0)
         {
             cs->contractions = (uint16*)utf8Converter;
@@ -429,49 +437,51 @@ int my_wildcmp_icu(CHARSET_INFO *cs,
     {
         /* assume doubling the utf8 size will be sufficient for utf16
          create double the desired buffer to give space for normalization */
-        if (2 * wOrigLen < ICU_STACK_BUFFER)
+        if (4 * wOrigLen < ICU_STACK_BUFFER)
         {
             pWild = wildBuffer;
         }
         else
         {
-            pWild = (UChar*)my_malloc(2 * wOrigLen * sizeof(UChar), MYF(MY_WME));
+            pWild = (UChar*)my_malloc(4 * wOrigLen * sizeof(UChar), MYF(MY_WME));
             if (!pWild) return 1;
         }
-        if (2 * sOrigLen < ICU_STACK_BUFFER)
+        if (4 * sOrigLen < ICU_STACK_BUFFER)
         {
             pStr = strBuffer;
         }
         else
         {
-            pStr = (UChar*)my_malloc(2 * sOrigLen * sizeof(UChar), MYF(MY_WME));
+            pStr = (UChar*)my_malloc(4 * sOrigLen * sizeof(UChar), MYF(MY_WME));
             if (!pStr) return 1;
         }
         wLen = ucnv_toUChars(icu_converter, pWild, 2 * wOrigLen,
                              wildstr, wOrigLen, &status);
         if (!U_SUCCESS(status)) return 1;
-        DBUG_ASSERT(wLen < wOrigLen);
+        DBUG_ASSERT(wLen < 2 * wOrigLen);
         sLen = ucnv_toUChars(icu_converter, pStr, 2 * sOrigLen, str,
                              sOrigLen, &status);
         if (!U_SUCCESS(status)) return 1;
-        DBUG_ASSERT(sLen < sOrigLen);
+        DBUG_ASSERT(sLen < 2 * sOrigLen);
 
         /* normalize if needed */
         if (unorm_quickCheck(pStr, sLen, UNORM_NFC, &status) != UNORM_YES || !U_SUCCESS(status))
         {
-            pNormStr = pStr + sOrigLen;
+            pNormStr = pStr + 2 * sOrigLen;
             sLen = unorm_normalize(pStr, sLen, UNORM_NFC, 0, pNormStr,
-                sOrigLen,  &status);
+                sOrigLen * 2,  &status);
             DBUG_ASSERT(U_SUCCESS(status));
+            DBUG_ASSERT(sLen < 2 * sOrigLen);
         }
         else pNormStr = pStr;/* no need to normalize */
 
         if (unorm_quickCheck(pWild, wLen, UNORM_NFC, &status) != UNORM_YES || !U_SUCCESS(status))
         {
-            pNormWild = pWild + wOrigLen;
+            pNormWild = pWild + 2 * wOrigLen;
             wLen = unorm_normalize(pWild, wLen, UNORM_NFC, 0, pNormWild,
-                wOrigLen,  &status);
+                wOrigLen * 2,  &status);
             DBUG_ASSERT(U_SUCCESS(status));
+            DBUG_ASSERT(wLen < 2 * wOrigLen);
         }
         else pNormWild = pWild; /* no need to normalize */
 

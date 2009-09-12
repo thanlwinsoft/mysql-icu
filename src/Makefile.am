@@ -8,4 +8,5 @@ EXTRA_CFLAGS = -DHAVE_CHARSET_utf8 -DMYSQL_DYNAMIC_PLUGIN
 
 libmysql_icu_la_CFLAGS = $(ICU_CFLAGS) $(MYSQL_CFLAGS) $(EXTRA_CFLAGS)
 libmysql_icu_la_LDFLAGS = $(ICU_LDFLAGS) $(MYSQL_LDFLAGS)
-libmysql_icu_la_SOURCES = ctype-icu.c mysql-icu-plugin.c
+libmysql_icu_la_SOURCES = ctype-icu.c mysql-icu-plugin.c word-brk-iter.cpp
+noinst_HEADERS = word-brk-iter.h

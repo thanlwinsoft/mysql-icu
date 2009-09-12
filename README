@@ -1,0 +1,34 @@
+Install the Plugin in MySQL using:
+
+mysql> INSTALL PLUGIN icu SONAME 'libmysql-icu.so';
+
+Edit your /etc/mysql/my.cnf and add the following lines somewhere under [mysqld]
+
+[mysqld]
+#
+# normal options
+# ...
+
+# mysql-icu plugin options
+# A space separated list of ICU locales to use for collation:
+icu_locales = my_MM th
+# An optional file in which to place custom collation rules
+# Uncomment and adjust the path to enable
+# icu_custom_file=/etc/mysql/my.txt
+
+
+Restart mysql for the changes to take affect. Note that changing these values
+after the plugin has been loaded currently has no affect. You will need to
+restart mysql.
+
+If the plugin is loaded successfully you should be able to see the ICU
+collation options with:
+
+mysql> show collation like '%icu%';
+
+You can then set your tables to collate using your chosen ICU collation.
+See the MySQL Manual for details on how to set a collation on a table, column
+or query. e.g.
+
+mysql> ALTER TABLE testCollate COLLATE = utf8_icu_root_ci;
+mysql> SELECT * FROM testCollate ORDER BY word COLLATE utf8_icu_my_MM_ci;

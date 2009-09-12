@@ -31,7 +31,11 @@
 
 #include <unicode/uclean.h>
 #include <unicode/uchar.h>
+#include <unicode/ucnv.h>
+#include <unicode/ubrk.h>
 #include <unicode/uversion.h>
+
+#include "word-brk-iter.h"
 
 #if !defined(__attribute__) && (defined(__cplusplus) || !defined(__GNUC__)  || __GNUC__ == 2 && __GNUC_MINOR__ < 8)
 #define __attribute__(A)
@@ -55,7 +59,8 @@ static void  icu_free(const void* context, void *ptr)
 
 
 static char     *icu_plugin_locales_value;
-static char     *icu_plugin_custom_file_value;
+static char     *icu_plugin_collation_file_value;
+static char     *icu_plugin_wordbreak_file_value;
 
 static long number_of_calls= 0; /* for SHOW STATUS, see below */
 
@@ -86,6 +91,37 @@ static void addLocale(int locIndex, const char * locale, CHARSET_INFO * baseChar
     }
 }
 
+static uchar * loadDataFromFile(const char * fileName, my_off_t * fileLen)
+{
+    uchar * data = NULL;
+    FILE * icuRules = my_fopen(fileName, O_RDONLY | O_BINARY, MYF(MY_WME));
+    if (icuRules)
+    {
+        *fileLen = my_fseek(icuRules, 0L, MY_SEEK_END, MYF(MY_WME));
+        *fileLen = my_ftell(icuRules, MYF(MY_WME));
+        my_fseek(icuRules, 0L, MY_SEEK_SET, MYF(MY_WME));
+        data = my_malloc(*fileLen, MYF(MY_WME));
+        if (data && my_fread(icuRules, data, *fileLen, MYF(MY_WME)) == *fileLen)
+        {
+            /* data read successfully*/
+        }
+        else
+        {
+            my_free(data, MYF(MY_WME));
+            data = NULL;
+            fprintf(stderr, "ICU: Failed to read ICU rules from %s length %ld\n",
+            icu_plugin_collation_file_value, (long)*fileLen);
+        }
+        my_fclose(icuRules, MYF(MY_WME));
+    }
+    else
+    {
+        fprintf(stderr, "ICU: Failed to read ICU rules from %s\n",
+            icu_plugin_collation_file_value);
+    }
+    return data;
+}
+
 static int mysql_icu_plugin_init(void *arg __attribute__((unused)))
 {
     int i = 0;
@@ -94,9 +130,10 @@ static int mysql_icu_plugin_init(void *arg __attribute__((unused)))
     int lastUcs2 = 0;
     int icuLocaleCount = 0;
     char locale[128];
+    my_off_t fileLen = 0;
     UErrorCode ustatus = 0;
     UVersionInfo versionInfo;
-    char * data = NULL;
+    uchar * data = NULL;
     u_getVersion(versionInfo); /* get ICU version */
     u_setMemoryFunctions(NULL, icu_malloc, icu_realloc, icu_free, &ustatus);
 
@@ -104,13 +141,13 @@ static int mysql_icu_plugin_init(void *arg __attribute__((unused)))
     {
         if (all_charsets[i])
         {
-            fprintf(stderr, "%d %s %s\n", i, all_charsets[i]->csname,
-                    all_charsets[i]->name);
+            /*fprintf(stderr, "ICU: %d %s %s\n", i, all_charsets[i]->csname,
+                    all_charsets[i]->name);*/
             if (strcmp(all_charsets[i]->csname, "utf8") == 0) lastUtf8 = i;
             if (strcmp(all_charsets[i]->csname, "ucs2") == 0) lastUcs2 = i;
         }
     }
-    fprintf(stderr, "last utf8 %d last ucs2 %d\n", lastUtf8, lastUcs2);
+    /*fprintf(stderr, "ICU: last utf8 %d last ucs2 %d\n", lastUtf8, lastUcs2);*/
     ++icuLocaleCount;
 #ifdef HAVE_CHARSET_ucs2
     my_charset_ucs2_icu_ci.number = lastUcs2+1;
@@ -152,37 +189,27 @@ static int mysql_icu_plugin_init(void *arg __attribute__((unused)))
     }
 
     /* custom*/
-    if (icu_plugin_custom_file_value)
+    if (icu_plugin_collation_file_value)
     {
-        FILE * icuRules = my_fopen(icu_plugin_custom_file_value, O_WRONLY | O_BINARY, MYF(MY_WME));
-        if (icuRules)
+        data = loadDataFromFile(icu_plugin_collation_file_value, &fileLen);
+        if (data)
         {
-            my_off_t fileLen = my_fseek(icuRules, 0L, MY_SEEK_END, MYF(MY_WME));
-            my_fseek(icuRules, 0L, MY_SEEK_SET, MYF(MY_WME));
-            data = my_malloc(fileLen, MYF(MY_WME));
-            if (data && my_fread(icuRules, data, fileLen, MYF(MY_WME)) == fileLen)
-            {
                 ++icuLocaleCount;
 
 #ifdef HAVE_CHARSET_ucs2
                 addLocale(lastUcs2+icuLocaleCount, "custom", &my_charset_ucs2_icu_ci);
-                all_charsets[icuLocaleCount]->tailoring = data;
+                all_charsets[lastUcs2+icuLocaleCount]->tailoring = data;
                 data = my_malloc(fileLen, MYF(MY_WME));
-                if (data) memcpy(data, all_charsets[icuLocaleCount]->tailoring);
+                if (data)
+                    memcpy(data, all_charsets[lastUcs2+icuLocaleCount]->tailoring, fileLen);
 #endif
 #ifdef HAVE_CHARSET_utf8
                 if (data)
                 {
                     addLocale(lastUtf8+icuLocaleCount, "custom", &my_charset_utf8_icu_ci);
-                    all_charsets[icuLocaleCount]->tailoring = data;
+                    all_charsets[lastUtf8+icuLocaleCount]->tailoring = (char*)data;
                 }
 #endif
-            }
-            else
-            {
-                fprintf(stderr, "Failed to read ICU rules from %s length %ld\n",
-                    icu_plugin_custom_file_value, fileLen);
-            }
         }
     }
 
@@ -191,20 +218,286 @@ static int mysql_icu_plugin_init(void *arg __attribute__((unused)))
 
 static int mysql_icu_plugin_deinit(void *arg __attribute__((unused)))
 {
-  return(0);
+    /* TODO remove icu charsets */
+    return(0);
 }
-
 
 static int mysql_icu_parser_init(MYSQL_FTPARSER_PARAM *param __attribute__((unused)))
 {
+
     return 0;
 }
-static int mysql_icu_parser_deinit(MYSQL_FTPARSER_PARAM *param __attribute__((unused)))
+
+static int mysql_icu_parser_deinit(MYSQL_FTPARSER_PARAM *param)
 {
+    if (param->ftparser_state)
+    {
+        ubrk_close((UBreakIterator *)param->ftparser_state);
+        param->ftparser_state = NULL;
+    }
     return 0;
 }
+
+extern char ft_boolean_syntax[15];
+/* Boolean search operators */
+#define FTB_YES   (ft_boolean_syntax[0])
+#define FTB_EGAL  (ft_boolean_syntax[1])
+#define FTB_NO    (ft_boolean_syntax[2])
+#define FTB_INC   (ft_boolean_syntax[3])
+#define FTB_DEC   (ft_boolean_syntax[4])
+#define FTB_LBR   (ft_boolean_syntax[5])
+#define FTB_RBR   (ft_boolean_syntax[6])
+#define FTB_NEG   (ft_boolean_syntax[7])
+#define FTB_TRUNC (ft_boolean_syntax[8])
+#define FTB_LQUOT (ft_boolean_syntax[10])
+#define FTB_RQUOT (ft_boolean_syntax[11])
+
+static void add_word(MYSQL_FTPARSER_PARAM *param, UChar * uWord, int uWordLen,
+    char * word, int len, UWordBreak breakStatus, UChar prev, UChar next,
+    char * inQuote)
+{
+    /*
+    UErrorCode status = U_ZERO_ERROR;
+    UConverter * icu_converter = (UConverter*)param->cs->contractions;
+    char word[1024];
+    int utfLen = 0;
+    */
+    int i;
+
+    MYSQL_FTPARSER_BOOLEAN_INFO boolInfo=
+    { FT_TOKEN_WORD, 0, 0, 0, 0, ' ', 0 };
+
+    if (prev == (UChar)FTB_YES) boolInfo.yesno = 1;
+    if (prev == (UChar)FTB_EGAL) boolInfo.yesno = 0;
+    if (prev == (UChar)FTB_NO) boolInfo.yesno = -1;
+    if (prev == (UChar)FTB_INC) boolInfo.weight_adjust++;
+    if (prev == (UChar)FTB_DEC) boolInfo.weight_adjust--;
+    if (prev == (UChar)FTB_NEG) boolInfo.wasign= !boolInfo.wasign;
+    if (next == (UChar)FTB_TRUNC) boolInfo.trunc = (char)1;
+
+    if (breakStatus >= UBRK_WORD_NONE && breakStatus < UBRK_WORD_NONE_LIMIT)
+    {
+        fprintf(stderr, "ICU: non word '%x'\n", uWord[0]);
+        if (uWordLen == 1)
+        {
+            if (uWord[0] == FTB_LBR || (!(*inQuote) && uWord[0] == FTB_LQUOT))
+            {
+                boolInfo.type = FT_TOKEN_LEFT_PAREN;
+                if (uWord[0] == FTB_LQUOT)
+                {
+                    boolInfo.quot = (char*)1;
+                    *inQuote = 1;
+                }
+            }
+            else if (uWord[0] == FTB_RBR || uWord[0] == FTB_RQUOT)
+            {
+                boolInfo.type = FT_TOKEN_RIGHT_PAREN;
+                if (uWord[0] == FTB_RQUOT)
+                    *inQuote = 0;
+            }
+            else
+            {
+                return;
+            }
+        }
+        else
+        {
+            fprintf(stderr, "ICU: non word '%x' len %d\n", uWord[0], uWordLen);
+            return; /* ignore other characters */
+        }
+    }
+    if (*inQuote)
+    {
+        /*boolInfo.quot = (char*)1;*/
+        boolInfo.yesno = 1;
+    }
+
+    if (param->cs->contractions) /* UTF-8 */
+    {
+        /* convert back to UTF-8 * /
+        utfLen = ucnv_fromUChars(icu_converter, word, 1024, uWord, uWordLen, &status);
+        if (!U_SUCCESS(status)) return;/ * ignore this word * /
+        param->flags |= MYSQL_FTFLAGS_NEED_COPY;*/
+        fprintf(stderr, "ICU: add_word %d yesno%d ", boolInfo.type, (int)boolInfo.yesno);
+        for (i = 0; i < len; i++) fprintf(stderr, "%c", word[i]);
+        fprintf(stderr, "\n");
+
+        param->mysql_add_word(param, word, len, &boolInfo);
+    }
+    else
+    {
+        param->mysql_add_word(param, (char*)uWord, uWordLen*sizeof(UChar), &boolInfo);
+    }
+}
+
 static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
 {
+    UErrorCode status = U_ZERO_ERROR;
+    UBreakIterator * iBreak = param->ftparser_state;
+    UChar * uText = NULL;
+    int textLen = 0;
+    my_off_t fileLen = 0;
+    uchar * brkRules = NULL;
+    UChar * uBrkRules = NULL;
+    UParseError parseErr;
+    UConverter * icu_converter = (UConverter*)param->cs->contractions;
+    int start = 0;
+    int boundary = 0;
+    char quote = 0;
+    UChar32 uCode32;
+    char * pDoc = param->doc;
+    int u16pos = 0, u8s = 0, u8e = 0;
+
+    if (strstr(param->cs->name, "icu") == NULL)
+    {
+        fprintf(stderr, "ICU: parser can only be used for ICU charsets");
+        return param->mysql_parse(param, param->doc, param->length);
+    }
+
+    ++number_of_calls;
+    if (icu_converter)
+    {
+        DBUG_ASSERT(strcmp(param->cs->csname, "utf8") == 0);
+        uText = my_malloc(param->length * 2 * sizeof(UChar), MYF(MY_WME));
+        textLen = ucnv_toUChars(icu_converter, uText, param->length * 2,
+            param->doc, param->length, &status);
+        if (!U_SUCCESS(status)) return 1;
+    }
+    else
+    {
+        DBUG_ASSERT(strcmp(param->cs->csname, "ucs2") == 0);
+        uText = (UChar*)param->doc;
+        textLen = param->length/2;
+    }
+    if (iBreak)
+    {
+        ubrk_setText(iBreak, uText, textLen, &status);
+        if (!U_SUCCESS(status))
+            return 1;
+    }
+    else
+    {
+        if (strlen(param->cs->tailoring) < strlen(param->cs->name))
+        {
+            iBreak = ubrk_open(UBRK_WORD, param->cs->tailoring, uText, textLen, &status);
+        }
+        else if (icu_plugin_wordbreak_file_value)
+        {
+            /* we use custom break rules for custom collation */
+            brkRules = loadDataFromFile(icu_plugin_wordbreak_file_value, &fileLen);
+            if (brkRules)
+            {
+                uBrkRules = my_malloc(fileLen * 2, MYF(MY_WME));
+                if (uBrkRules)
+                {
+                    if (icu_converter == NULL) /* UCS2 charset*/
+                    {
+                        icu_converter = ucnv_open("utf8", &status);
+                    }
+                    if (icu_converter)
+                    {
+                        fileLen = ucnv_toUChars(icu_converter, uBrkRules, fileLen * 2, (char*)brkRules, fileLen, &status);
+                    }
+                    if (U_SUCCESS(status) && fileLen)
+                    {
+                        /*iBreak = ubrk_openRules(uBrkRules, fileLen, uText, textLen, &parseErr, &status);*/
+                        iBreak = createBreakIterator(uBrkRules, fileLen,
+                            UBRK_WORD, &parseErr, &status);
+                        if (iBreak && U_SUCCESS(status))
+                            ubrk_setText(iBreak, uText, textLen, &status);
+                        if (U_FAILURE(status))
+                        {
+                            iBreak = NULL;
+                            fprintf(stderr, "ICU: Failed to parse break rules at %s line %d, %d",
+                                icu_plugin_wordbreak_file_value, parseErr.line, parseErr.offset);
+                        }
+                        else
+                        {
+                            fprintf(stderr, "ICU: Loaded custom word break rules\n");
+                        }
+                    }
+                    if (!param->cs->contractions)
+                    {
+                        ucnv_close(icu_converter);
+                    }
+                    my_free(uBrkRules, MYF(MY_WME));
+                }
+            }
+            else
+            {
+                fprintf(stderr, "ICU: Failed to load break rules from %s\n", icu_plugin_wordbreak_file_value);
+            }
+        }
+        if (!iBreak)
+        {
+            iBreak = ubrk_open(UBRK_WORD, "root", uText, textLen, &status);
+        }
+        if (!U_SUCCESS(status))
+        {
+            return 1;
+        }
+        param->ftparser_state = iBreak;
+    }
+
+    boundary = ubrk_next(iBreak);
+    if (param->cs->contractions) /* UTF-8 */
+    {
+        while (boundary != UBRK_DONE)
+        {
+            /* compute utf8 positions */
+            for (u16pos = start; u16pos < boundary;
+                 u16pos += U16_IS_SURROGATE(uText[u16pos])? 2 : 1)
+            {
+                U8_NEXT(pDoc, u8e, param->length, uCode32);
+            }
+            add_word(param, uText + start, boundary - start,
+                param->doc + u8s, u8e - u8s,
+                ubrk_getRuleStatus(iBreak),
+                (start > 0)? uText[start - 1] : ' ',
+                (boundary < textLen)? uText[boundary] : ' ', &quote);
+            start = boundary;
+            u8s = u8e;
+            boundary = ubrk_next(iBreak);
+        }
+        if (start < textLen)
+        {
+            for (u16pos = start; u16pos < boundary;
+                 u16pos += U16_IS_SURROGATE(uText[u16pos])? 2 : 1)
+            {
+                U8_NEXT(pDoc, u8e, param->length, uCode32);
+            }
+            add_word(param, uText + start, textLen - start,
+                param->doc + u8s, u8e - u8s,
+                ubrk_getRuleStatus(iBreak), (start > 0)? uText[start - 1] : ' ',
+                ' ', &quote);
+        }
+    }
+    else /* UCS2*/
+    {
+        while (boundary != UBRK_DONE)
+        {
+            /* compute  positions */
+            add_word(param, uText + start, boundary - start,
+                (char*)(uText + start), 2 * (textLen - start),
+                ubrk_getRuleStatus(iBreak),
+                (start > 0)? uText[start - 1] : ' ',
+                (boundary < textLen)? uText[boundary] : ' ', &quote);
+            start = boundary;
+            boundary = ubrk_next(iBreak);
+        }
+        if (start < textLen)
+        {
+            add_word(param, uText + start, textLen - start,
+                (char*)(uText + start), 2 * (textLen - start),
+                ubrk_getRuleStatus(iBreak), (start > 0)? uText[start - 1] : ' ',
+                ' ', &quote);
+        }
+    }
+
+    if (param->cs->contractions) /* UTF-8 */
+    {
+        my_free(uText, MYF(MY_WME));
+    }
     return 0;
 }
 
@@ -231,7 +524,7 @@ static int icu_plugin_locales_check(MYSQL_THD thd,
         return -1;
     str = value->val_str(value, locales, &len);
     if (!str) return -2;
-    fprintf(stderr, "Check locales: %s %d\n", str, len);
+    fprintf(stderr, "ICU: Check locales: %s %d\n", str, len);
     for (i = 0; i < len; i++)
     {
         switch (state)
@@ -291,11 +584,11 @@ static int icu_plugin_locales_check(MYSQL_THD thd,
                 }
                 break;
             default:
-                fprintf(stderr, "Unexpected state %d\n", state);
+                fprintf(stderr, "ICU: Unexpected state %d\n", state);
                 return -1;
         }
     }
-    fprintf(stderr, "Locale OK\n");
+    fprintf(stderr, "ICU: Locale OK\n");
     *(const char**)save=str;
     return 0;
 }
@@ -305,15 +598,21 @@ static MYSQL_SYSVAR_STR(locales, icu_plugin_locales_value,
   "Space delimited list of ICU locales to use.",
   icu_plugin_locales_check, NULL, "");
 
-static MYSQL_SYSVAR_STR(custom_file, icu_plugin_custom_file_value,
+static MYSQL_SYSVAR_STR(custom_collation_file, icu_plugin_collation_file_value,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_MEMALLOC,
   "Path to file containing custom ICU collation rules.",
+  NULL, NULL, "");
+
+static MYSQL_SYSVAR_STR(custom_wordbreak_file, icu_plugin_wordbreak_file_value,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_MEMALLOC,
+  "Path to file containing custom ICU word break rules.",
   NULL, NULL, "");
 
 
 static struct st_mysql_sys_var* icu_plugin_system_variables[]= {
   MYSQL_SYSVAR(locales),
-  MYSQL_SYSVAR(custom_file),
+  MYSQL_SYSVAR(custom_collation_file),
+  MYSQL_SYSVAR(custom_wordbreak_file),
   NULL
 };
 
@@ -331,8 +630,8 @@ static struct st_mysql_ftparser mysql_icu_parser_descriptor =
 
 static struct st_mysql_show_var icu_plugin_status[]=
 {
-  {"static",     (char *)"ICU plugin",     SHOW_CHAR},
-  {"called",     (char *)&number_of_calls, SHOW_LONG},
+  {"icu_name",     (char *)"ICU plugin",     SHOW_CHAR},
+  {"icu_called",     (char *)&number_of_calls, SHOW_LONG},
   {0,0,0}
 };
 

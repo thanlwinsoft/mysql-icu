@@ -20,19 +20,18 @@
   <kdevautoproject>
     <general>
       <useconfiguration>default</useconfiguration>
+      <activetarget>src/libmysql-icu.la</activetarget>
     </general>
     <run>
       <mainprogram>/usr/local/mysql/libexec/mysqld</mainprogram>
-      <programargs>--defaults-file=/usr/local/mysql/etc/my.cnf
-</programargs>
-      <globaldebugarguments>--defaults-file=/usr/local/mysql/etc/my.cnf
-</globaldebugarguments>
-      <globalcwd>/home/keith/projects/mysql-icu/mysql-icu</globalcwd>
+      <programargs> --defaults-file=/usr/local/mysql/etc/my.cnf</programargs>
+      <globaldebugarguments> --defaults-file=/usr/local/mysql/etc/my.cnf</globaldebugarguments>
+      <globalcwd>/usr/local/mysql/libexec</globalcwd>
       <useglobalprogram>true</useglobalprogram>
       <terminal>false</terminal>
       <autocompile>false</autocompile>
       <autoinstall>false</autoinstall>
-      <autokdesu>false</autokdesu>
+      <autokdesu>true</autokdesu>
       <envvars/>
     </run>
     <configurations>
@@ -205,7 +204,7 @@
   <kdevdebugger>
     <general>
       <gdbpath/>
-      <dbgshell>libtool</dbgshell>
+      <dbgshell/>
       <configGdbScript/>
       <runShellScript/>
       <runGdbScript/>
@@ -215,7 +214,7 @@
       <raiseGDBOnStart>false</raiseGDBOnStart>
     </general>
     <display>
-      <staticmembers>false</staticmembers>
+      <staticmembers>true</staticmembers>
       <demanglenames>true</demanglenames>
       <outputradix>10</outputradix>
     </display>
