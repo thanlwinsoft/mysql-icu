@@ -14,7 +14,15 @@ Edit your /etc/mysql/my.cnf and add the following lines somewhere under [mysqld]
 icu_locales = my_MM th
 # An optional file in which to place custom collation rules
 # Uncomment and adjust the path to enable
-# icu_custom_file=/etc/mysql/my.txt
+#icu_custom_collation_file=/etc/mysql/my.txt
+#
+# An optional file in which to place ICU word break rules, which are used
+# to find words for indexing.
+#icu_custom_wordbreak_file=/etc/mysql/myword.txt
+#
+# Enable use of custom word break rules for all UTF8 and UCS2 charsets
+# (assumes icu_custom_wordbreak_file has been specified)
+#icu_use_custom_wordbreak_for_all=1
 
 
 Restart mysql for the changes to take affect. Note that changing these values

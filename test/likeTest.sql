@@ -1,3 +1,5 @@
+-- Test using like for matching
+set names utf8;
 create database if not exists collate_my_MM;
 
 use collate_my_MM;

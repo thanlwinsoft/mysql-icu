@@ -61,7 +61,13 @@ static my_bool my_coll_init_icu(CHARSET_INFO *cs, void *(*alloc)(size_t))
             if (strcmp(cs->csname, "utf8") == 0)
             {
                 /* this isn't really the sort order, but it provides a pointer to the converter*/
-                cs->contractions = (uint16*)ucnv_open((const char*)(cs->csname), &status);
+                cs->contractions = (uint16*)ucnv_open("utf8", &status);
+                if (!cs->contractions || !U_SUCCESS(status))
+                    return 1;
+            }
+            else if (strcmp(cs->csname, "ucs2") == 0)
+            {/* MySQL uses Big endian, ICU uses platform */
+                cs->contractions = (uint16*)ucnv_open("utf16be", &status);
                 if (!cs->contractions || !U_SUCCESS(status))
                     return 1;
             }
@@ -71,7 +77,7 @@ static my_bool my_coll_init_icu(CHARSET_INFO *cs, void *(*alloc)(size_t))
     }
     else
     {
-        utf8Converter = ucnv_open((const char*)(cs->csname), &status);
+        utf8Converter = ucnv_open("utf8", &status);
         if (!U_SUCCESS(status)) return 1;
 
         rulesLength = strlen(cs->tailoring);
@@ -97,6 +103,12 @@ static my_bool my_coll_init_icu(CHARSET_INFO *cs, void *(*alloc)(size_t))
         {
             cs->contractions = (uint16*)utf8Converter;
         }
+        else if (strcmp(cs->csname, "ucs2") == 0)
+        {
+            cs->contractions = (uint16*)ucnv_open("utf16be", &status);
+            if (!cs->contractions || !U_SUCCESS(status))
+                return 1;
+        }
         my_free(rules, MYF(MY_WME));
     }
     return 0;
@@ -113,13 +125,30 @@ static size_t my_strnxfrm_icu(CHARSET_INFO *cs,
     UErrorCode status = U_ZERO_ERROR;
     struct UCharIterator iter;
     UCollator * icu_collator = (UCollator*)cs->sort_order;
+    UChar data[512];
+    uchar * pData = (uchar*)data;
+    int i = 0;
 
     if (srclen == 0 || dstlen == 0)
         return dstlen;
 
     if (strcmp(cs->csname,"ucs2")==0) /* uscs2 */
     {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+        if (srclen > 512)
+        {
+            pData = my_malloc(srclen, MYF(MY_WME));
+            if (!pData) return 0;
+        }
+        for (i = 0; i + 1 < srclen; i+=2)
+        {
+            pData[i] = src[i+1];
+            pData[i+1] = src[i];
+        }
+        uiter_setString(&iter, (UChar*)pData, srclen/sizeof(UChar));
+#else
         uiter_setString(&iter, (UChar*)src, srclen/sizeof(UChar));
+#endif
     }
     else if (strcmp(cs->csname,"utf8")==0)
     {
@@ -143,6 +172,10 @@ static size_t my_strnxfrm_icu(CHARSET_INFO *cs,
         remDstLen -= sortKeyLen;
     }
     bzero(dst, remDstLen);
+    if (pData != (uchar*)data)
+    {
+        my_free(pData, MYF(MY_WME));
+    }
     /* the return has to be dstlen */
     return dstlen;
 }
@@ -157,6 +190,9 @@ static int my_strnncoll_icu(CHARSET_INFO *cs,
     UCharIterator tIter;
     int32_t sPrefixLen = 0;
     int32_t tPrefixLen = 0;
+    uchar * ps;
+    uchar * pt;
+    int i;
     UCollationResult result = UCOL_EQUAL;
     UChar32 dummy;
     UCollator * icu_collator = (UCollator*)cs->sort_order;
@@ -188,20 +224,45 @@ static int my_strnncoll_icu(CHARSET_INFO *cs,
     }
     else if (strcmp(cs->csname, "ucs2") == 0)
     {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+        ps = my_malloc(slen, MYF(MY_WME));
+        if (ps == NULL) return -1;
+        pt = my_malloc(tlen, MYF(MY_WME));
+        if (pt == NULL) return -1;
+        /* swap bytes*/
+        for (i = 0; i + 1 < slen; i+=2)
+        {
+            ps[i] = s[i+1];
+            ps[i+1] = s[i];
+        }
+        for (i = 0; i + 1 < tlen; i+=2)
+        {
+            pt[i] = t[i+1];
+            pt[i+1] = t[i];
+        }
+#else
+        ps = s;
+        pt = t;
+#endif
         if (t_is_prefix)
         {
             /* count code points in tlen and advance slen accordingly */
             while (sPrefixLen < slen && tPrefixLen < tlen)
             {
-                U16_NEXT(t, tPrefixLen, tlen, dummy);
+                U16_NEXT(pt, tPrefixLen, tlen, dummy);
                 if (dummy == U_SENTINEL) break;
-                U16_NEXT(s, sPrefixLen, slen, dummy);
+                U16_NEXT(ps, sPrefixLen, slen, dummy);
             }
             slen = (sPrefixLen < slen)? sPrefixLen : slen;
         }
-        result = ucol_strcoll(icu_collator, (const UChar*) s, slen/sizeof(UChar),
-                              (const UChar*)t, tlen/sizeof(UChar));
+        result = ucol_strcoll(icu_collator, (const UChar*) ps, slen/sizeof(UChar),
+                              (const UChar*)pt, tlen/sizeof(UChar));
         DBUG_ASSERT(U_SUCCESS(status));
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+        my_free(ps, MYF(MY_WME));
+        my_free(pt, MYF(MY_WME));
+#endif
     }
     else /* not supported */
     {
