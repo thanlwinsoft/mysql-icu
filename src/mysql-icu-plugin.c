@@ -68,6 +68,7 @@ static long number_of_calls= 0; /* for SHOW STATUS, see below */
 typedef struct icu_ftstate_st
 {
     UConverter * conv;
+    UConverter * convUtf8;
     UBreakIterator * breakIter;
 } IcuFTState;
 
@@ -257,13 +258,35 @@ static int mysql_icu_parser_init(MYSQL_FTPARSER_PARAM *param)
 {
     UErrorCode status = U_ZERO_ERROR;
     IcuFTState * state = my_malloc(sizeof(IcuFTState), MYF(MY_WME));
+    char isUtf8 = (strcmp(param->cs->csname, "utf8") == 0)? 1 : 0;
+    char isUcs2 = (strcmp(param->cs->csname, "ucs2") == 0)? 1 : 0;
     if (state)
     {
-        state->conv = ucnv_open("utf8", &status);
-        if (U_FAILURE(status))
+        if (isUtf8)
         {
-            my_free(state, MYF(MY_WME));
-            return 1;
+            state->conv = ucnv_open("utf8", &status);
+            state->convUtf8 = state->conv;
+            if (U_FAILURE(status))
+            {
+                my_free(state, MYF(MY_WME));
+                return 1;
+            }
+        }
+        if (isUcs2)
+        {
+            state->conv = ucnv_open("utf16be", &status);
+            if (U_FAILURE(status))
+            {
+                my_free(state, MYF(MY_WME));
+                return 1;
+            }
+            state->convUtf8 = ucnv_open("utf8", &status);
+            if (U_FAILURE(status))
+            {
+                ucnv_close(state->conv);
+                my_free(state, MYF(MY_WME));
+                return 1;
+            }
         }
         state->breakIter = NULL;
     }
@@ -286,6 +309,10 @@ static int mysql_icu_parser_deinit(MYSQL_FTPARSER_PARAM *param)
     {
         IcuFTState * state = (IcuFTState*)param->ftparser_state;
         if (state->breakIter) ubrk_close(state->breakIter);
+        if (state->conv != state->convUtf8)
+        {
+            ucnv_close(state->convUtf8);
+        }
         if (state->conv) ucnv_close(state->conv);
         my_free(state, MYF(MY_WME));
         param->ftparser_state = NULL;
@@ -428,6 +455,7 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
     if (isUtf8)
     {
         uText = my_malloc(param->length * 2 * sizeof(UChar), MYF(MY_WME));
+        if (!uText) return 1;
         textLen = ucnv_toUChars(state->conv, uText, param->length * 2,
             param->doc, param->length, &status);
         if (!U_SUCCESS(status)) return 1;
@@ -437,8 +465,11 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
         /* checking the csname like this avoid a wierd compiler warning*/
         DBUG_ASSERT(csname[0] == 'u' && csname[1] == 'c' && csname[2] == 's'
                     && csname[3] == '2');
-        uText = (UChar*)param->doc;
-        textLen = param->length/2;
+        uText = my_malloc(param->length, MYF(MY_WME));
+        if (!uText) return 1;
+        textLen = ucnv_toUChars(state->conv, uText, param->length,
+            param->doc, param->length, &status);
+        if (!U_SUCCESS(status)) return 1;
     }
     if (iBreak)
     {
@@ -465,7 +496,7 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
                 {
                     if (state->conv)
                     {
-                        fileLen = ucnv_toUChars(state->conv, uBrkRules, fileLen * 2, (char*)brkRules, fileLen, &status);
+                        fileLen = ucnv_toUChars(state->convUtf8, uBrkRules, fileLen * 2, (char*)brkRules, fileLen, &status);
                     }
                     if (U_SUCCESS(status) && fileLen)
                     {

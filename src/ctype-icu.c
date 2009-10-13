@@ -125,30 +125,22 @@ static size_t my_strnxfrm_icu(CHARSET_INFO *cs,
     UErrorCode status = U_ZERO_ERROR;
     struct UCharIterator iter;
     UCollator * icu_collator = (UCollator*)cs->sort_order;
+    UConverter * icu_converter = (UConverter*)cs->contractions;
     UChar data[512];
-    uchar * pData = (uchar*)data;
-    int i = 0;
+    UChar * pData = data;
 
     if (srclen == 0 || dstlen == 0)
         return dstlen;
 
     if (strcmp(cs->csname,"ucs2")==0) /* uscs2 */
     {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-        if (srclen > 512)
+        if ((srclen / sizeof(UChar)) > 512)
         {
             pData = my_malloc(srclen, MYF(MY_WME));
-            if (!pData) return 0;
         }
-        for (i = 0; i + 1 < srclen; i+=2)
-        {
-            pData[i] = src[i+1];
-            pData[i+1] = src[i];
-        }
+        ucnv_toUChars(icu_converter, pData, srclen/sizeof(UChar), (const char *)src, srclen, &status);
+        if (U_FAILURE(status)) return 0;
         uiter_setString(&iter, (UChar*)pData, srclen/sizeof(UChar));
-#else
-        uiter_setString(&iter, (UChar*)src, srclen/sizeof(UChar));
-#endif
     }
     else if (strcmp(cs->csname,"utf8")==0)
     {
@@ -172,7 +164,7 @@ static size_t my_strnxfrm_icu(CHARSET_INFO *cs,
         remDstLen -= sortKeyLen;
     }
     bzero(dst, remDstLen);
-    if (pData != (uchar*)data)
+    if (pData != data)
     {
         my_free(pData, MYF(MY_WME));
     }
@@ -190,12 +182,12 @@ static int my_strnncoll_icu(CHARSET_INFO *cs,
     UCharIterator tIter;
     int32_t sPrefixLen = 0;
     int32_t tPrefixLen = 0;
-    uchar * ps;
-    uchar * pt;
-    int i;
+    UChar * ps = NULL;
+    UChar * pt = NULL;
     UCollationResult result = UCOL_EQUAL;
     UChar32 dummy;
     UCollator * icu_collator = (UCollator*)cs->sort_order;
+    UConverter * icu_converter = (UConverter*)cs->contractions;
     /* handle case of an empty string */
     if (slen == 0)
     {
@@ -224,26 +216,16 @@ static int my_strnncoll_icu(CHARSET_INFO *cs,
     }
     else if (strcmp(cs->csname, "ucs2") == 0)
     {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
         ps = my_malloc(slen, MYF(MY_WME));
         if (ps == NULL) return -1;
         pt = my_malloc(tlen, MYF(MY_WME));
         if (pt == NULL) return -1;
-        /* swap bytes*/
-        for (i = 0; i + 1 < slen; i+=2)
-        {
-            ps[i] = s[i+1];
-            ps[i+1] = s[i];
-        }
-        for (i = 0; i + 1 < tlen; i+=2)
-        {
-            pt[i] = t[i+1];
-            pt[i+1] = t[i];
-        }
-#else
-        ps = s;
-        pt = t;
-#endif
+
+        ucnv_toUChars(icu_converter, ps, slen/sizeof(UChar), (const char *)s, slen, &status);
+        if (U_FAILURE(status)) return -1;
+        ucnv_toUChars(icu_converter, pt, tlen/sizeof(UChar), (const char *)t, tlen, &status);
+        if (U_FAILURE(status)) return -1;
+
         if (t_is_prefix)
         {
             /* count code points in tlen and advance slen accordingly */
@@ -255,14 +237,12 @@ static int my_strnncoll_icu(CHARSET_INFO *cs,
             }
             slen = (sPrefixLen < slen)? sPrefixLen : slen;
         }
-        result = ucol_strcoll(icu_collator, (const UChar*) ps, slen/sizeof(UChar),
-                              (const UChar*)pt, tlen/sizeof(UChar));
+        result = ucol_strcoll(icu_collator, ps, slen/sizeof(UChar),
+                              pt, tlen/sizeof(UChar));
         DBUG_ASSERT(U_SUCCESS(status));
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
         my_free(ps, MYF(MY_WME));
         my_free(pt, MYF(MY_WME));
-#endif
     }
     else /* not supported */
     {
@@ -309,7 +289,7 @@ static int my_strnncollsp_icu(CHARSET_INFO *cs,
         if (strcmp(cs->csname, "ucs2") == 0)
         {
             for (i = slen; i < tlen; i+=2)
-            {
+            { /* big endian */
                 *(p + i) = 0;
                 *(p + i + 1) = ' ';
             }
@@ -332,7 +312,7 @@ static int my_strnncollsp_icu(CHARSET_INFO *cs,
         memcpy(p, t, tlen);
         /* pad with spaces */
         if (strcmp(cs->csname, "ucs2") == 0)
-        {
+        {/* Big endian */
             for (i = tlen; i < slen; i+=2)
             {
                 *(p + i) = 0;
@@ -549,23 +529,22 @@ int my_wildcmp_icu(CHARSET_INFO *cs,
     }
     else if (strcmp(cs->csname, "ucs2") == 0)
     {
-        /* no need to convert, just cast */
-        pStr = (UChar*)str;
-        pWild = (UChar*)wildstr;
         sLen = sOrigLen/2;
         wLen = wOrigLen/2;
 
+        pStr = my_malloc(3 * sOrigLen, MYF(MY_WME));
+        if (pStr == NULL) return -1; /* out of memory*/
+        pWild = my_malloc(3 * wOrigLen, MYF(MY_WME));
+        if (pWild == NULL) return -1; /* out of memory*/
+
+        ucnv_toUChars(icu_converter, pStr, sOrigLen/sizeof(UChar), (const char *)str, sOrigLen, &status);
+        if (U_FAILURE(status)) return -1;
+        ucnv_toUChars(icu_converter, pWild, wOrigLen/sizeof(UChar), (const char *)wildstr, wOrigLen, &status);
+        if (U_FAILURE(status)) return -1;
+
         if (unorm_quickCheck(pStr, sLen, UNORM_NFC, &status) != UNORM_YES || !U_SUCCESS(status))
         {
-            if (sOrigLen > ICU_STACK_BUFFER)
-            {
-                pNormStr = (UChar*)my_malloc(sOrigLen * sizeof(UChar), MYF(MY_WME));
-                if (pNormStr == NULL) return -1; /* out of memory*/
-            }
-            else
-            {
-                pNormStr = strBuffer;
-            }
+            pNormStr = pStr + sOrigLen/sizeof(UChar);
             sLen = unorm_normalize(pStr, sLen, UNORM_NFC, 0, pNormStr,
                 sOrigLen,  &status);
             pStr = pNormStr; /* for free check*/
@@ -575,15 +554,7 @@ int my_wildcmp_icu(CHARSET_INFO *cs,
 
         if (unorm_quickCheck(pWild, wLen, UNORM_NFC, &status) != UNORM_YES || !U_SUCCESS(status))
         {
-            if (wOrigLen > ICU_STACK_BUFFER)
-            {
-                pNormWild = (UChar*)my_malloc(wOrigLen * sizeof(UChar), MYF(MY_WME));
-                if (pNormWild == NULL) return -1; /* out of memory */
-            }
-            else
-            {
-                pNormWild = wildBuffer;
-            }
+            pNormWild = pWild + wOrigLen/sizeof(UChar);
             wLen = unorm_normalize(pWild, wLen, UNORM_NFC, 0, pNormWild,
                 wOrigLen,  &status);
             pWild = pNormWild; /* for free check */
