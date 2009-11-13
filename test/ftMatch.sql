@@ -28,7 +28,9 @@ insert into matchTest2 (phrase) values
 ('နိုင်ငံရေး'),
 ('လူများတယ်'),
 ('အင်္ဂလိန်ကမြန်မာပြည်ကိုလားတယ်။'),
-('မြန်လားမာလား။');
+('မြန်လားမာလား။'),
+('စကောဘာသာစကား'),
+('ကောင်းတယ်။');
 
 insert into matchTest2 (phrase) values 
 ('This is English'),
@@ -70,4 +72,9 @@ select 'Match "မြန်မာ" boolean';
 select * from matchTest2 where match (phrase) against ('"မြန်မာ"' IN BOOLEAN MODE);
 select 'Match မြန်မာ*';
 select * from matchTest2 where match (phrase) against ('မြန်မာ*' IN BOOLEAN MODE);
+
+select 'Match ကော';
+select * from matchTest2 where match (phrase) against ('ကော');
+select 'Match ကောင်း';
+select * from matchTest2 where match (phrase) against ('ကောင်း');
 

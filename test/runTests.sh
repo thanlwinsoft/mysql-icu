@@ -10,7 +10,6 @@ function runtest ()
 		then
 			echo $1 OK;
 		else
-			cat $1.out;
 			echo $1 output unexpected;
 			exit 2;
 		fi
@@ -20,12 +19,11 @@ function runtest ()
 	fi
 }
 
-runtest ftMatchUcs2;
-
 runtest collate_my_MM;
 runtest collate_my_MMucs2;
 runtest likeTest;
 runtest likeTestUcs2;
 runtest ftMatch;
+# the icu parser can't actually be used with ucs2, so this doesn't do much
 runtest ftMatchUcs2;
 

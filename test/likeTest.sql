@@ -20,7 +20,8 @@ insert into likeTest (phrase) values
 ('လူများတယ်'),
 ('အင်္ဂလိန်ကမြန်မာပြည်ကိုလားတယ်။');
 
-select * from likeTest where phrase like '%';
+select  '%လူ%';
+select * from likeTest where phrase like '%လူ%';
 select 'မ%';
 select * from likeTest where phrase like 'မ%';
 select 'မြ%';
@@ -47,14 +48,18 @@ select  'မြန်%မာ%';
 select * from likeTest where phrase like 'မြန်%မာ%';
 -- arguably this should match, but because ကား is a combined collation unit, it
 -- doesn't.
-select  '%က__';
-select * from likeTest where phrase like '%က__';
-select  '_ူ';
-select * from likeTest where phrase like '_ူ';
+select  '%စ___';
+select * from likeTest where phrase like '%စ___';
+
+select  '_ကာ%';
+select * from likeTest where phrase like '_ကာ%';
 select  '%မာ_ကား%';
 select * from likeTest where phrase like '%မာ_ကား%';
 
-
-
-
+-- this fails because ူ is not found on its own
+select  '%ူ%';
+select * from likeTest where phrase like '%ူ%';
+-- if you need raw code point based searches use the default collation
+select  'general %ူ%';
+select * from likeTest where phrase like '%ူ%' collate utf8_general_ci;
 

@@ -17,7 +17,7 @@ icu_locales = my_MM th
 #icu_custom_collation_file=/etc/mysql/my.txt
 #
 # An optional file in which to place ICU word break rules, which are used
-# to find words for indexing.
+# to find words for fulltext indexing.
 #icu_custom_wordbreak_file=/etc/mysql/myword.txt
 #
 # Enable use of custom word break rules for all UTF8 and UCS2 charsets
