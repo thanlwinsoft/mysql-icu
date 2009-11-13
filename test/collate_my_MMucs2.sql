@@ -1,19 +1,24 @@
 -- Test ICU charset collation
 set names utf8;
 
-drop database if exists collate_my_MM;
-create database collate_my_MM;
-use collate_my_MM;
+-- drop database if exists collate_my_MM;
+-- create database collate_my_MM;
+-- use collate_my_MM;
+use mysql_icu_test;
+
+drop table if exists testCollate;
+drop table if exists ordered_my_MM;
+drop table if exists ordered_custom;
+drop table if exists ordered_uca;
+
 create table testCollate (
     id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
     word VARCHAR(128)
 ) collate ucs2_icu_my_MM_ci;
 insert into testCollate (word) values ('ခါ'),('ကို'),('ကာ'),('ကူ'),('ကီ'),('ကု'),('ခို'),('ခ'),('ကြ'),('ကြွ'),('ချ'),('ခှ'),('ကျ'),('ကှ'),('ကံ'),('ကက်'),('ခေါ်');
 
-select * from testCollate order by word;
--- select * from testCollate order by word into outfile '/home/keith/projects/mysql-icu/mysql-icu/test/collate_my_MM.result1';
-select * from testCollate order by word collate ucs2_icu_custom_ci;
--- select * from testCollate order by word collate ucs2_icu_custom_ci into outfile '/home/keith/projects/mysql-icu/mysql-icu/test/collate_my_MM.result2';
+-- select * from testCollate order by word;
+-- select * from testCollate order by word collate ucs2_icu_custom_ci;
 
 create table ordered_my_MM (
     id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,

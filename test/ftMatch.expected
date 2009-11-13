@@ -1,0 +1,67 @@
+Table	Op	Msg_type	Msg_text
+mysql_icu_test.matchTest	repair	status	OK
+Table	Op	Msg_type	Msg_text
+mysql_icu_test.matchTest2	repair	status	OK
+Match လုံး
+Match လုံး
+Match လုပ်
+Match လုပ်
+Match မြန်မာစကား
+Match မြန်မာစကား
+id	phrase
+1	မြန်မာစကား
+Match မြန်မာ
+Match မြန်မာ
+Match မြန်မာ*
+Match မြန်မာ*
+id	phrase
+1	မြန်မာစကား
+7	မြန်မာနိုင်ငံ
+5	မြန်မာဘာသာစကား
+6	မြန်မာလူမျို
+Match လူ
+Match လူ
+Match +လူ
+Match +လူ
+Custom rules
+Custom rules
+Match လုံး
+Match လုံး
+id	phrase
+2	စကာလုံးများ
+3	ဘယ်နှလုံးလဲ။
+Match +လူ
+Match +လူ
+id	phrase
+6	မြန်မာလူမျို
+9	လူများတယ်
+Match +လူ -မြန်
+Match +လူ -မြန်
+id	phrase
+9	လူများတယ်
+Match မြန်မာ
+Match မြန်မာ
+id	phrase
+1	မြန်မာစကား
+6	မြန်မာလူမျို
+7	မြန်မာနိုင်ငံ
+5	မြန်မာဘာသာစကား
+10	အင်္ဂလိန်ကမြန်မာပြည်ကိုလားတယ်။
+11	မြန်လားမာလား။
+Match "မြန်မာ" boolean
+Match "မြန်မာ" boolean
+id	phrase
+1	မြန်မာစကား
+5	မြန်မာဘာသာစကား
+6	မြန်မာလူမျို
+7	မြန်မာနိုင်ငံ
+10	အင်္ဂလိန်ကမြန်မာပြည်ကိုလားတယ်။
+Match မြန်မာ*
+Match မြန်မာ*
+id	phrase
+1	မြန်မာစကား
+5	မြန်မာဘာသာစကား
+6	မြန်မာလူမျို
+7	မြန်မာနိုင်ငံ
+10	အင်္ဂလိန်ကမြန်မာပြည်ကိုလားတယ်။
+11	မြန်လားမာလား။

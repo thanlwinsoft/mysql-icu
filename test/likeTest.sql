@@ -1,8 +1,6 @@
 -- Test using like for matching
 set names utf8;
-create database if not exists collate_my_MM;
-
-use collate_my_MM;
+use mysql_icu_test;
 
 drop table if exists likeTest;
 create table likeTest  (
@@ -47,6 +45,8 @@ select  '%မာ%ကို%';
 select * from likeTest where phrase like '%မာ%ကို%';
 select  'မြန်%မာ%';
 select * from likeTest where phrase like 'မြန်%မာ%';
+-- arguably this should match, but because ကား is a combined collation unit, it
+-- doesn't.
 select  '%က__';
 select * from likeTest where phrase like '%က__';
 select  '_ူ';

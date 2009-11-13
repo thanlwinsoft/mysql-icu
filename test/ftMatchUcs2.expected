@@ -1,0 +1,26 @@
+Table	Op	Msg_type	Msg_text
+mysql_icu_test.matchTest	repair	status	OK
+Table	Op	Msg_type	Msg_text
+mysql_icu_test.matchTest2	repair	status	OK
+မြန်မာ*
+မြန်မာ*
+လူ
+လူ
++လူ
++လူ
+Custom rules
+Custom rules
+လုံး
+လုံး
++လူ
++လူ
+မြန်မာစကား
+မြန်မာစကား
+id	phrase
+1	မြန်မာစကား
++လူ -"မြန်မာ"
++လူ -"မြန်မာ"
+"မြန်မာ" boolean
+"မြန်မာ" boolean
+မြန်မာ*
+မြန်မာ*

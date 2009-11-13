@@ -19,4 +19,6 @@ configure
 libtool
 *.pcs
 stamp-h1
+*.out
+.anjuta*
 

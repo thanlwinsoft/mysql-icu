@@ -1,8 +1,7 @@
 -- Test full text parsing
 set names utf8;
-create database if not exists collate_my_MM;
 
-use collate_my_MM;
+use mysql_icu_test;
 
 drop table if exists matchTest;
 drop table if exists matchTest2;
@@ -16,8 +15,7 @@ create table matchTest2  (
     phrase VARCHAR(128)
 ) collate ucs2_icu_custom_ci;
 
-create fulltext index icuft on matchTest (phrase) with parser icu;
-create fulltext index icuft2 on matchTest2 (phrase) with parser icu;
+-- Fulltext indexes are not supported with UCS2, only boolean mode is supported
 
 insert into matchTest2 (phrase) values 
 ('မြန်မာစကား'),
@@ -41,33 +39,26 @@ insert into matchTest select * from matchTest2;
 repair table matchTest quick;
 repair table matchTest2 quick;
 
-select 'လုံး';
-select * from matchTest where match (phrase) against ('လုံး');
-select 'လုပ်';
-select * from matchTest where match (phrase) against ('လုပ်');
-select 'မြန်မာစကား';
-select * from matchTest where match (phrase) against ('မြန်မာစကား');
-select 'မြန်မာ';
-select * from matchTest where match (phrase) against ('မြန်မာ');
+-- Boolean mode can be used, but the parser can't be set!
 select 'မြန်မာ*';
 select * from matchTest where match (phrase) against ('မြန်မာ*' IN BOOLEAN MODE);
 select 'လူ';
-select * from matchTest where match (phrase) against ('လူ');
+select * from matchTest where match (phrase) against ('လူ' IN BOOLEAN MODE);
 select '+လူ';
 select * from matchTest where match (phrase) against ('+လူ' IN BOOLEAN MODE);
 
 select 'Custom rules';
 select 'လုံး';
-select * from matchTest2 where match (phrase) against ('လုံး');
+select * from matchTest2 where match (phrase) against ('လုံး' IN BOOLEAN MODE);
 select '+လူ';
 select * from matchTest2 where match (phrase) against ('+လူ' IN BOOLEAN MODE);
+
+select 'မြန်မာစကား';
+select * from matchTest2 where match (phrase) against ('မြန်မာစကား' IN BOOLEAN MODE);
 
 select '+လူ -"မြန်မာ"';
 select * from matchTest2 where match (phrase) against ('+လူ -မြန်' IN BOOLEAN MODE);
 
-
-select 'မြန်မာ';
-select * from matchTest2 where match (phrase) against ('မြန်မာ');
 select '"မြန်မာ" boolean';
 select * from matchTest2 where match (phrase) against ('"မြန်မာ"' IN BOOLEAN MODE);
 select 'မြန်မာ*';

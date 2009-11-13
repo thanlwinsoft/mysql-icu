@@ -70,6 +70,7 @@ typedef struct icu_ftstate_st
     UConverter * conv;
     UConverter * convUtf8;
     UBreakIterator * breakIter;
+	CHARSET_INFO * activeCs;
 } IcuFTState;
 
 /**
@@ -256,45 +257,95 @@ static int mysql_icu_plugin_deinit(void *arg __attribute__((unused)))
 */
 static int mysql_icu_parser_init(MYSQL_FTPARSER_PARAM *param)
 {
+	IcuFTState * state = my_malloc(sizeof(IcuFTState), MYF(MY_WME));
+	/* param->cs character set isn't set yet, so can't use it here */
+	state->conv = state->convUtf8 = NULL;
+    state->breakIter = NULL;
+	state->activeCs = NULL;
+	param->ftparser_state = state;
+	return (state)? 0 : 1;
+}
+
+/** Constructs the converter objects for the character set
+ * @param param
+ * @return 0 on success
+ */
+static int mysql_icu_parser_init_converter(MYSQL_FTPARSER_PARAM *param)
+{
     UErrorCode status = U_ZERO_ERROR;
-    IcuFTState * state = my_malloc(sizeof(IcuFTState), MYF(MY_WME));
-    char isUtf8 = (strcmp(param->cs->csname, "utf8") == 0)? 1 : 0;
-    char isUcs2 = (strcmp(param->cs->csname, "ucs2") == 0)? 1 : 0;
-    if (state)
+    IcuFTState * state = param->ftparser_state;
+    char isUtf8;
+    char isUcs2;
+	if (!state)
+	{
+		fprintf(stderr, "mysql_icu_parser: No state.\n");
+		return 1;
+	}
+	if (!param || !(param->cs))
+	{
+		fprintf(stderr, "mysql_icu_parser: No character set found.\n");
+		return 1;/* no character set! */
+	}
+	if (state->activeCs == param->cs && state->conv && state->convUtf8)
+	{
+		/* nothing to do */
+		return 0;
+	}
+	/* close the old breakIter since it is for a different character set */
+	if (state->breakIter)
+	{
+		ubrk_close(state->breakIter);
+		state->breakIter = NULL;
+	}
+	isUtf8 = (strcmp(param->cs->csname, "utf8") == 0)? 1 : 0;
+	isUcs2 = (strcmp(param->cs->csname, "ucs2") == 0)? 1 : 0;
+
+    if (isUtf8)
     {
-        if (isUtf8)
-        {
-            state->conv = ucnv_open("utf8", &status);
+		if (state->conv == NULL)
+		{
+        	state->conv = ucnv_open("utf8", &status);
             state->convUtf8 = state->conv;
-            if (U_FAILURE(status))
-            {
-                my_free(state, MYF(MY_WME));
-                return 1;
-            }
-        }
-        if (isUcs2)
+		}
+		else
+		{
+			if (state->convUtf8 != state->conv)
+			{
+				ucnv_close(state->conv);
+				state->conv = state->convUtf8;
+			}
+		}
+        if (U_FAILURE(status))
         {
-            state->conv = ucnv_open("utf16be", &status);
-            if (U_FAILURE(status))
-            {
-                my_free(state, MYF(MY_WME));
-                return 1;
-            }
-            state->convUtf8 = ucnv_open("utf8", &status);
-            if (U_FAILURE(status))
-            {
-                ucnv_close(state->conv);
-                my_free(state, MYF(MY_WME));
-                return 1;
-            }
+			/* state is kept between calls
+            my_free(state, MYF(MY_WME)); */
+            return 1;
         }
-        state->breakIter = NULL;
     }
-    else
+    if (isUcs2)
     {
-        return 1;
+		if (state->conv == NULL || state->conv == state->convUtf8)
+		{
+            state->conv = ucnv_open("utf16be", &status);				
+		}
+        if (U_FAILURE(status))
+        {
+            /* state is kept between calls
+            my_free(state, MYF(MY_WME)); */
+            return 1;
+        }
+		if (state->convUtf8 == NULL)
+		{
+        	state->convUtf8 = ucnv_open("utf8", &status);
+		}
+        if (U_FAILURE(status))
+        {
+            /* state is kept between calls
+            my_free(state, MYF(MY_WME)); */
+            return 1;
+        }
     }
-    param->ftparser_state = state;
+	state->activeCs = param->cs;
     return 0;
 }
 
@@ -305,10 +356,11 @@ static int mysql_icu_parser_init(MYSQL_FTPARSER_PARAM *param)
 */
 static int mysql_icu_parser_deinit(MYSQL_FTPARSER_PARAM *param)
 {
-    if (param->ftparser_state)
+    if (param && param->ftparser_state)
     {
         IcuFTState * state = (IcuFTState*)param->ftparser_state;
         if (state->breakIter) ubrk_close(state->breakIter);
+		/* conv and convUtf8 may be the same object */
         if (state->conv != state->convUtf8)
         {
             ucnv_close(state->convUtf8);
@@ -429,7 +481,7 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
 {
     UErrorCode status = U_ZERO_ERROR;
     IcuFTState * state = (IcuFTState*)param->ftparser_state;
-    UBreakIterator * iBreak = state->breakIter;
+    UBreakIterator * iBreak;
     UChar * uText = NULL;
     int textLen = 0;
     my_off_t fileLen = 0;
@@ -442,16 +494,19 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
     UChar32 uCode32;
     char * pDoc = param->doc;
     int u16pos = 0, u8s = 0, u8e = 0;
-    const char * csname = param->cs->csname;
-    char isUtf8 = (strcmp(csname, "utf8") == 0)? 1 : 0;
-/*
-    if (strstr(param->cs->name, "icu") == NULL)
-    {
-        fprintf(stderr, "ICU: parser can only be used for ICU charsets");
-        return param->mysql_parse(param, param->doc, param->length);
-    }
-*/
-    ++number_of_calls;
+    const char * csname = (param && param->cs)? param->cs->csname : NULL;
+    char isUtf8;
+
+	if (mysql_icu_parser_init_converter (param))
+	{
+		fprintf(stderr, "mysql_icu_parser: failed to init converters\n");
+		return 1;
+	}
+	/* initialize these after the converters */
+	isUtf8 = (strcmp(csname, "utf8") == 0)? 1 : 0;
+	iBreak = state->breakIter;
+
+	++number_of_calls;
     if (isUtf8)
     {
         uText = my_malloc(param->length * 2 * sizeof(UChar), MYF(MY_WME));
@@ -479,6 +534,8 @@ static int mysql_icu_parser_parse(MYSQL_FTPARSER_PARAM *param)
     }
     else
     {
+		/* if the tailoring is just a locale name, use the word break rules
+		for the locale, unless overridden by use_custom_wordbreak_for_all */
         if (strlen(param->cs->tailoring) < strlen(param->cs->name) &&
             (!icu_plugin_use_custom_wordbreak_for_all ||
              !icu_plugin_wordbreak_file_value))
